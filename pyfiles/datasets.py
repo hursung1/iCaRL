@@ -99,7 +99,7 @@ class CIFAR100_IncrementalDataset(torchvision.datasets.CIFAR100):
                  download=False,
                  classes=range(100)):
         
-        super(CIFAR100_IncrementalDataset, self).__init__(source, 
+        super(CIFAR100_IncrementalDataset, self).__init__(root, 
                                                        train, 
                                                        transform, 
                                                        download=True)
@@ -110,7 +110,7 @@ class CIFAR100_IncrementalDataset(torchvision.datasets.CIFAR100):
             train_labels = []
             for i in range(len(self.data)):
                 if self.targets[i] in classes:
-                    train_data.append(self.data[i].astype(dtype=np.float32))
+                    train_data.append(np.transpose(self.data[i].astype(dtype=np.float32), (2, 0, 1)))
                     train_labels.append(self.targets[i])
             
             self.TrainData = train_data
@@ -121,7 +121,7 @@ class CIFAR100_IncrementalDataset(torchvision.datasets.CIFAR100):
             test_labels = []
             for i in range(len(self.data)):
                 if self.targets[i] in classes:
-                    test_data.append(self.data[i].astype(dtype=np.float32))
+                    test_data.append(np.transpose(self.data[i].astype(dtype=np.float32), (2, 0, 1)))
                     test_labels.append(self.targets[i])
             
             self.TestData = test_data
@@ -138,3 +138,11 @@ class CIFAR100_IncrementalDataset(torchvision.datasets.CIFAR100):
             return len(self.TrainLabels)
         else:
             return len(self.TestLabels)
+
+    def append(self, data, label):
+        if self.train:
+            self.TrainData.append(data)
+            self.TrainLabels.append(label)
+        else:            
+            self.TestData.append(data)
+            self.TestLabels.append(label)
