@@ -15,12 +15,14 @@ class iCaRL(torch.nn.Module):
         self.device = device
         self.total_classes = 0
         self.total_memory_size = memory_size
-        self.exemplar_set = torch.zeros(0).to(device)
+        self.exemplar_set = [torch.zeros(0).to(device), torch.zeros(0).to(device)] #[data, label]
+
 
     def forward(self, x):
         _x = self.FeatureExtractor(x)
         _x = self.fc_net(_x)
         return torch.nn.functional.sigmoid(_x)
+
 
     def classify(self, x):
         mu = torch.zeros(self.exemplar_set.shape[0]).to(self.device)
@@ -30,31 +32,74 @@ class iCaRL(torch.nn.Module):
 
         return torch.min(((phi_x - mu) ** 2).sum(dim=0).sqrt())[1]
 
-    def train(self, TrainDataLoader, num_new_task):
+
+    def train(self, TrainDataLoader, num_new_class):
+        """
+        Method for training model
+
+        Parameters
+        ---------
+        TrainDataLoader: new tasks' traindataloader\n
+        num_new_class: # of new classes
+        """
         self.UpdateRepresentation(TrainDataLoader)
-        self.total_classes += num_new_task
+        self.total_classes += num_new_class
         memory_size = self.total_memory_size / self.total_classes
+
         self.__ReduceExemplarSet(memory_size)
         self.__ConstructExemplarSet()
 
+
     def __UpdateRepresentation(self, TrainDataLoader):
-        new_class_loss = 0.0
-        old_class_loss = 0.0
+        distillation_loss = 0.0
+        classification_loss = 0.0
 
-        # get (q_i)^y
-        q = torch.empty().to(self.device)
-        for exemplar in self.exemplar_set:
+        ### Data Augmentation
+        domain = self.__DataAugmentation(self.exemplar_set, TrainDataLoader)
+
+        ### get q
+        q = torch.zeros(0).to(self.device)
+        for exemplar, _ in domain:
             q_i = forward(exemplar)
-            q = torch.stack((q, q_i.unsqueeze(0)))
+            q = torch.cat((q, q_i))
 
-        
+        ### loss with new data
+        self.optim.zero_grad()
+        for (x, y) in TrainDataLoader:
+            x = x.to(self.device)
+            y = y.to(self.device)
 
-        new_class_loss = self.CELoss()
-        old_class_loss = self.BCELoss()
+            out = self.forward(x)
+            classification_loss += self.CELoss(out, y)
+            distillation_loss += self.BCELoss(out, q)
 
-        loss = -(new_class_loss + old_class_loss)
+
+        ### distillation loss
+
+        classification_loss = self.CELoss()
+        distillation_loss = self.BCELoss()
+
+        loss = classification_loss + distillation_loss
         loss.backward()
         optim.step()
+
+
+    def __DataAugmentation(self, target, TrainDataLoader):
+        """
+        Parameters
+        ----------
+        target: dataset to augment\n
+        TrainDataLoader: new dataset
+        """
+        _target = [target[0].detach().clone(), target[1].detach().clone()]
+        for (x, y) in TrainDataLoader:
+            x = x.to(self.device)
+            y = y.to(self.device)
+
+            _target[0] = torch.cat((_target[0], x))
+            _target[1] = torch.cat((_target[1], y))
+
+        return _target
 
     def __IncrementWeight(self, num_classes):
         in_features = self.fc_net.in_features
@@ -63,6 +108,7 @@ class iCaRL(torch.nn.Module):
 
         self.fc_net = torch.nn.Linear(in_features, num_classes).to(self.device)
         self.fc_net.weight.data[:out_features] = weights
+
 
     def __ConstructExemplarSet(self, TrainDataLoader):
         x_ = fv = P = fv_p =  torch.zeros(0)
@@ -86,6 +132,7 @@ class iCaRL(torch.nn.Module):
             fv_p = torch.cat((fv_p, fv[index].unsqueeze(0)))
 
         self.exemplar_set = torch.cat((self.exemplar_set, P.unsqueeze(0)))
+
 
     def __ReduceExemplarSet(self, m):
         for exemplar in self.exemplar_set:
