@@ -3,30 +3,39 @@ import torchvision
 import matplotlib.pyplot as plt
 
 import pyfiles.datasets as datasets
+import pyfiles.models as models
 
 batch_size = 64
-transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),])
+transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
                                             torchvision.transforms.Normalize((0.5, 0.5, 0.5),(0.5, 0.5, 0.5))])
-TrainDataLoader = []
-TestDataLoader = []
-for i in range(5):
-    TrainDataset = datasets.CIFAR100_IncrementalDataset(train=True, 
-                                                        download=True, 
-                                                        transform=transform,
-                                                        classes=range(i*2, i*2 + 1))
-    TestDataset = datasets.CIFAR100_IncrementalDataset(train=False,
-                                                        download=True, 
-                                                        transform=transform,
-                                                        classes=range(i*2, i*2 + 1))
-    TrainDataLoader.append(torch.utils.data.DataLoader(TrainDataset, 
-                                                        batch_size=batch_size, 
-                                                        shuffle=True,
-                                                        num_workers=2))
-    TestDataLoader.append(torch.utils.data.DataLoader(TestDataset, 
-                                                        batch_size=batch_size, 
-                                                        shuffle=True,
-                                                        num_workers=2))
+TrainDataLoaders = []
+TestDataLoaders = []
+for i in range(10):
+    # CIFAR100 Dataset
+    TrainDataSet = CIFAR100_IncrementalDataset(root='data/',
+                                               train=True,
+                                               transform=transform,
+                                               download=True,
+                                               classes=range(i * 10, (i+1) * 10))
+    
+    TestDataSet = CIFAR100_IncrementalDataset(root='data/', 
+                                              train=False,
+                                              transform=transform,
+                                              download=True,
+                                              classes=range(i * 10, (i+1) * 10))
+    
+    TrainDataLoaders.append(torch.utils.data.DataLoader(TrainDataSet,
+                                                        batch_size=batch_size,
+                                                        shuffle=True))
+    
+    TestDataLoaders.append(torch.utils.data.DataLoader(TestDataSet, 
+                                                       batch_size=batch_size,
+                                                       shuffle=False))
 
 
 K = 2000
 epochs = 70
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+net = models.iCaRL(memory_size=K, device=device, feature_size=, num_classes=, lr=1e-3)
+for TrainDataLoader in TrainDataLoaders:
+    
