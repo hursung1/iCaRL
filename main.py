@@ -10,7 +10,7 @@ K = 2000
 epochs = 70
 batch_size = 64
 feature_size = 1
-entire_class = 20
+entire_class = 100
 class_per_task = 10
 num_tasks = int(entire_class / class_per_task)
 

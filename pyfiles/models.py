@@ -46,22 +46,27 @@ class iCaRL(torch.nn.Module):
         _TrainDataSet = deepcopy(TrainDataSet)
         self.batch_size = batch_size
         self.__UpdateRepresentation(_TrainDataSet, self.batch_size)
+
+        total_classes = self.total_classes
         self.total_classes += num_new_class
         memory_size = int(self.total_memory_size / self.total_classes)
 
         self.__ReduceExemplarSet(memory_size)
-        self.__ConstructExemplarSet(TrainDataSet)
+        for label in range(self.total_classes, total_classes):
+            _TrainDataSet = TrainDataSet.getImageperLabel(label)
+            self.__ConstructExemplarSet(_TrainDataSet)
+        
+        self.total_classes = total_classes
 
 
     def __UpdateRepresentation(self, TrainDataSet, batch_size):
         distillation_loss = classification_loss = loss = 0.0
 
-        
         ### Data Augmentation
         self.__DataAugmentation(TrainDataSet, self.exemplar_set)
         TrainDataLoader = torch.utils.data.DataLoader(TrainDataSet,
                                                     batch_size=batch_size,
-                                                    #num_workers=2,
+                                                    num_workers=2,
                                                     shuffle=True)
 
         ### get q
@@ -82,6 +87,9 @@ class iCaRL(torch.nn.Module):
             loss = self.CELoss(out, y)
             #print(out.shape, q.shape)
             
+            print(out.shape)
+            print(y)
+            print(q[batch_size*i : batch_size*(i+1)].shape)
             loss += self.BCELoss(out, q[batch_size*i : batch_size*(i+1)])
             loss.backward()
             self.optim.step()
@@ -111,18 +119,37 @@ class iCaRL(torch.nn.Module):
 
 
     def __ConstructExemplarSet(self, TrainDataSet):
-        x_ = fv = P = fv_p =  torch.zeros(0).to(self.device)
+        x_ = fv = P_y = fv_p =  torch.zeros(0).to(self.device)
+        """
+        x_: All data in TrainDataSet
+        fv: Feature vector, phi(x)
+        P_y: Exemplar set for each class
+        fv_p: Previous feature vector
+        """
+        # Split TrainDataSet by each class 
+        '''
+        TrainDataSet.getImageperLabel()
+        for i in range(TrainDataSet.__len__()):
+            _, label = TrainDataSet.__getitem__(i)
+            print(label)
+        '''
         TrainDataLoader = torch.utils.data.DataLoader(TrainDataSet,
                                                     batch_size=self.batch_size,
-                                                    #num_workers=2,
+                                                    num_workers=2,
                                                     shuffle=False)
-        for (x, _) in TrainDataLoader:
+        # for (x, y) in TrainDataLoader:
+        for x in TrainDataLoader:
             x = x.to(self.device)
+            # y = y.to(self.device)
+            
             x_ = torch.cat((x_, x))
             num_data = x.shape[0]
             
             phi = self.FeatureExtractor(x)
-            fv = torch.cat((fv, phi.unsqueeze(0)))
+            # print(phi.shape)
+            # print(fv.shape)
+            # fv = torch.cat((fv, phi.unsqueeze(0)))
+            fv = torch.cat((fv, phi))
 
         mu = fv.mean(dim=0)
         memory_size = int(self.total_memory_size / self.total_classes)
@@ -131,11 +158,12 @@ class iCaRL(torch.nn.Module):
             pre_feature_sum = fv_p.sum(dim=0)
             features = fv.detach().clone() + pre_feature_sum
             
-            index = torch.min(((mu - (features / k)) ** 2).sum(dim=0).sqrt())[1]
-            P = torch.cat((P, x_[index].unsqueeze(0)))
+            # print(((mu - (features / k)) ** 2).sum(dim=1).sqrt().unsqueeze(1))
+            index = torch.argmin(((mu - (features / k)) ** 2).sum(dim=1).sqrt())
+            P_y = torch.cat((P_y, x_[index].unsqueeze(0)))
             fv_p = torch.cat((fv_p, fv[index].unsqueeze(0)))
 
-        self.exemplar_set = torch.cat((self.exemplar_set, P.unsqueeze(0)))
+        self.exemplar_set = torch.cat((self.exemplar_set, P_y.unsqueeze(0)))# Need Modification
 
 
     def __ReduceExemplarSet(self, m):

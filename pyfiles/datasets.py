@@ -139,6 +139,12 @@ class CIFAR100_IncrementalDataset(torchvision.datasets.CIFAR100):
         else:
             return len(self.TestLabels)
 
+    def getImageperLabel(self, label):
+        print(label)
+        print(np.array(self.TrainLabels))
+        TrainData = np.array(self.TrainData)
+        return TrainData[np.array(self.TrainLabels) == label]
+
     def append(self, data, label):
         if self.train:
             self.TrainData.append(data)
